@@ -1,0 +1,111 @@
+---
+- name: Deploy Node.js API with Docker
+  hosts: app_servers
+  become: yes
+  vars:
+    app_name: nodejs-hello-api
+    app_port: 3000
+    image_name: "{{ app_name }}:latest"
+    
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - docker.io
+          - python3-pip
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+      tags:
+        - never
+        - setup
+        - packages
+
+    - name: Install Docker Python library
+      pip:
+        name: docker
+        state: present
+      tags:
+        - never
+        - setup
+        - packages
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+      tags:
+        - never
+        - setup
+
+    - name: Create app directory
+      file:
+        path: /opt/{{ app_name }}
+        state: directory
+        mode: '0755'
+      tags:
+        - deploy
+
+    - name: Copy application files
+      copy:
+        src: "{{ item }}"
+        dest: /opt/{{ app_name }}/
+      with_items:
+        - server.js
+        - package.json
+        - Dockerfile
+      tags:
+        - deploy
+
+    - name: Build Docker image
+      docker_image:
+        name: "{{ image_name }}"
+        build:
+          path: /opt/{{ app_name }}
+        source: build
+        state: present
+        force_source: yes
+      tags:
+        - deploy
+        - build
+
+    - name: Stop existing container if running
+      docker_container:
+        name: "{{ app_name }}"
+        state: absent
+      ignore_errors: yes
+      tags:
+        - deploy
+
+    - name: Run Docker container
+      docker_container:
+        name: "{{ app_name }}"
+        image: "{{ image_name }}"
+        state: started
+        restart_policy: always
+        ports:
+          - "{{ app_port }}:3000"
+        env:
+          PORT: "3000"
+      tags:
+        - deploy
+
+    - name: Wait for API to be ready
+      uri:
+        url: "http://localhost:{{ app_port }}/health"
+        status_code: 200
+      register: result
+      until: result.status == 200
+      retries: 10
+      delay: 3
+      tags:
+        - deploy
+        - verify
+
+    - name: Display API status
+      debug:
+        msg: "API is running at http://{{ ansible_host }}:{{ app_port }}/api/hello"
+      tags:
+        - deploy
+        - verify

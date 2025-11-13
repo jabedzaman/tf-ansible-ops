@@ -11,6 +11,11 @@ provider "docker" {
   host = "unix:///var/run/docker.sock"
 }
 
+# Reference existing Docker network
+data "docker_network" "devops" {
+  name = "devops-network"
+}
+
 # Pull ARM-compatible Nagios image
 resource "docker_image" "nagios" {
   name         = "manios/nagios:latest"
@@ -50,8 +55,12 @@ resource "docker_container" "nagios" {
     external = 8000
   }
 
+  # Connect to existing devops-network
+  networks_advanced {
+    name = data.docker_network.devops.name
+  }
 
-  # Mount custom config file directly into objects directory
+  # Mount custom config file
   volumes {
     host_path      = abspath("${path.module}/nagios-config/objects/nodejs-api.cfg")
     container_path = "/opt/nagios/etc/objects/nodejs-api.cfg"

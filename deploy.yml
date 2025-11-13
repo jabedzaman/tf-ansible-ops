@@ -86,6 +86,8 @@
         restart_policy: always
         ports:
           - "{{ app_port }}:3000"
+        networks:
+          - name: devops-network
         env:
           PORT: "3000"
       tags:
